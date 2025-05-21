@@ -1,0 +1,70 @@
+name: Continuous deployement Pipeline
+run-name: Continuous deployement Pipeline triggered by ${{ github.actor }}
+on:
+  push:
+    branches:
+      - 'release/**'
+
+jobs:
+  DeployOnGithubPage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Cache node modules
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '22.x'
+
+      - name: Install Dependencies
+        run: npm ci --omit=dev
+
+      - name: Build static
+        run: npm run build:static
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .output/public
+  DeployOnVercel:
+  steps:
+    - uses: actions/checkout@v3
+
+    - name: Cache node modules
+      uses: actions/cache@v3
+      env:
+        cache-name: cache-node-modules
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-build-${{ env.cache-name }}-
+
+    - uses: actions/setup-node@v3
+      with:
+        node-version: '22.x'
+
+    - name: Install Dependencies
+      run: npm ci --omit=dev
+
+    - name: Build SSR
+      run: npm run build:ssr
+      
+    - name: Deploy to Vercel
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: .
+        prod: true
