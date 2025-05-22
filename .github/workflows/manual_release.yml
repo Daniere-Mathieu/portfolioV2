@@ -13,7 +13,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -33,11 +33,45 @@ jobs:
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: Create Pull Request from main to release branch
-        uses: peter-evans/create-pull-request@v7
+      - name: Fetch all branches
+        run: git fetch --all
+
+      - name: Create release branch if needed
+        run: |
+          if ! git show-ref --quiet refs/remotes/origin/release/${{ steps.version.outputs.version }}; then
+            git checkout -b release/${{ steps.version.outputs.version }} origin/main
+            git push origin release/${{ steps.version.outputs.version }}
+          fi
+
+      - name: Create PR branch from main
+        run: |
+          git checkout origin/main
+          git checkout -b main-to-release-${{ steps.version.outputs.version }}
+          git push origin main-to-release-${{ steps.version.outputs.version }}
+
+      - name: Create Pull Request using GitHub CLI
+        uses: actions/github-script@v7
         with:
-          source: main
-          destination: release/${{ steps.version.outputs.version }}
-          title: "Release ${{ steps.version.outputs.version }}"
-          body: "Automated PR from main to release/${{ steps.version.outputs.version }}"
-          commit-message: "chore(release): merge main into release/${{ steps.version.outputs.version }}"
+          script: |
+            const version = "${{ steps.version.outputs.version }}";
+            const prTitle = `Release ${version}`;
+            const prBody = `Merge \`main\` into \`release/${version}\` for release.`;
+            const { data: existingPRs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:main-to-release-${version}`,
+              base: `release/${version}`,
+              state: "open"
+            });
+            if (existingPRs.length === 0) {
+              await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: prTitle,
+                head: `main-to-release-${version}`,
+                base: `release/${version}`,
+                body: prBody
+              });
+            } else {
+              core.info("PR already exists.");
+            }
