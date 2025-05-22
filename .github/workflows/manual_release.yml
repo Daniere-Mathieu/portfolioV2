@@ -1,55 +1,53 @@
-name: Create Release Branch and PR
+name: "Create Release Branch and PR"
 
 on:
   workflow_dispatch:
-    inputs:
-      release_branch:
-        description: "Name of the release branch (e.g. release/1.2.3)"
-        required: true
-        type: string
 
 permissions:
-  contents: write           # allow pushing new branch
-  pull-requests: write      # allow creating PRs (requires repo setting enabled:contentReference[oaicite:0]{index=0})
+  contents: write
+  pull-requests: write
 
 jobs:
-  create-release:
+  release_branch:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout main
-        uses: actions/checkout@v4
-        with:
-          ref: main        # ensure we're on latest main
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Extract version from package.json
+        id: get_version
+        run: |
+          # Parse package.json to get the version string (e.g., "1.2.3")
+          VERSION=$(jq -r '.version' package.json)
+          # Set the version as an output for use in later steps
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Create release branch
         run: |
-          # Fetch remote to ensure up-to-date and check if branch exists
-          git fetch origin main
-          git checkout -B "${{ inputs.release_branch }}" origin/main
+          # Create a new branch "release/<version>" from the current main
+          git checkout -b "release/${{ steps.get_version.outputs.version }}" origin/main
 
-          # If branch already exists on remote, abort to avoid conflicts
-          if git ls-remote --exit-code --heads origin "${{ inputs.release_branch }}"; then
-            echo "Release branch already exists on remote. Exiting."
-            exit 1
-          fi
+      - name: Create empty release commit [skip ci]
+        run: |
+          # Create an empty commit to ensure the branch has a unique history
+          git commit --allow-empty -m "chore: Release ${{ steps.get_version.outputs.version }} [skip ci]"
 
-          # Create an empty commit to ensure branch has a unique history
-          git commit --allow-empty -m "chore: start ${{
-            inputs.release_branch }} [skip ci]"
-          # Push new branch to origin with [skip ci] to avoid triggering workflows:contentReference[oaicite:1]{index=1}
-          git push origin "${{ inputs.release_branch }}"
+      - name: Push release branch to GitHub
+        run: |
+          # Push the new branch to origin repository
+          git push origin "HEAD:refs/heads/release/${{ steps.get_version.outputs.version }}"
+
+      - name: Open pull request (main -> release branch)
         env:
-          GITHUB_AUTHOR: ${{ github.actor }}
-
-      - name: Create pull request from main into release branch
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # authenticate GitHub CLI with token
         run: |
           gh pr create \
-            --base "${{ inputs.release_branch }}" \
+            --base "release/${{ steps.get_version.outputs.version }}" \
             --head "main" \
-            --title "Merge main into ${{
-              inputs.release_branch }}" \
-            --body "This pull request was automatically created to merge \`main\` into **${{
-              inputs.release_branch }}** for release preparation."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            --title "Release ${{ steps.get_version.outputs.version }}" \
+            --body "Automated PR to merge main into release/${{ steps.get_version.outputs.version }}."
