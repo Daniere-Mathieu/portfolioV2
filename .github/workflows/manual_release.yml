@@ -1,4 +1,4 @@
-name: "Create Release Branch and PR"
+name: Create Release Branch and PR
 
 on:
   workflow_dispatch:
@@ -8,46 +8,54 @@ permissions:
   pull-requests: write
 
 jobs:
-  release_branch:
+  create_release_branch:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Extract version from package.json
         id: get_version
         run: |
-          # Parse package.json to get the version string (e.g., "1.2.3")
-          VERSION=$(jq -r '.version' package.json)
-          # Set the version as an output for use in later steps
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          VERSION=$(jq -r .version package.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Configure git author
+      - name: Configure Git user
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create release branch
+      - name: Create release branch with dummy commit
         run: |
-          # Create a new branch "release/<version>" from the current main
-          git checkout -b "release/${{ steps.get_version.outputs.version }}" origin/main
+          VERSION=${{ steps.get_version.outputs.version }}
+          RELEASE_BRANCH="release/$VERSION"
 
-      - name: Create empty release commit [skip ci]
-        run: |
-          # Create an empty commit to ensure the branch has a unique history
-          git commit --allow-empty -m "chore: Release ${{ steps.get_version.outputs.version }} [skip ci]"
+          # Create new branch from latest main
+          git checkout -b "$RELEASE_BRANCH" origin/main
 
-      - name: Push release branch to GitHub
-        run: |
-          # Push the new branch to origin repository
-          git push origin "HEAD:refs/heads/release/${{ steps.get_version.outputs.version }}"
+          # Add dummy file to ensure a diff and avoid PR rejection
+          echo "DO NOT MERGE — Dummy file for release $VERSION" > .release-dummy
+          git add .release-dummy
+          git commit -m "chore: dummy commit to allow PR [skip ci]"
 
-      - name: Open pull request (main -> release branch)
+          # Push release branch
+          git push origin "$RELEASE_BRANCH"
+
+      - name: Open pull request from main into release branch
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # authenticate GitHub CLI with token
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          VERSION=${{ steps.get_version.outputs.version }}
           gh pr create \
-            --base "release/${{ steps.get_version.outputs.version }}" \
+            --base "release/$VERSION" \
             --head "main" \
-            --title "Release ${{ steps.get_version.outputs.version }}" \
-            --body "Automated PR to merge main into release/${{ steps.get_version.outputs.version }}."
+            --title "Release $VERSION" \
+            --body "Automated PR to merge main into release/$VERSION for deployment."
