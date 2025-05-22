@@ -36,7 +36,7 @@ jobs:
       - name: Fetch all branches
         run: git fetch --all
 
-      - name: Create empty release branch if needed
+      - name: Create release branch from first commit if needed
         run: |
           VERSION=${{ steps.version.outputs.version }}
 
@@ -45,15 +45,13 @@ jobs:
             exit 0
           fi
 
-          echo "Creating empty release branch: release/${VERSION}"
+          # Get the first commit in the repository
+          FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
 
-          git checkout --orphan release/${VERSION}
-          git rm -rf . || true
-          echo "# Release ${VERSION}" > README.md
-          git add README.md
-          git commit -m "chore: initialize empty release branch for ${VERSION}"
+          echo "Creating release branch from first commit: $FIRST_COMMIT"
+
+          git checkout -b release/${VERSION} $FIRST_COMMIT
           git push origin release/${VERSION}
-          
       - name: Create PR branch from main
         run: |
           git checkout origin/main
