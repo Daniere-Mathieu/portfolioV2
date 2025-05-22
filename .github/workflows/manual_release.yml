@@ -1,86 +1,55 @@
-name: Manual Release Trigger
-run-name: Manual Release triggered by ${{ github.actor }}
+name: Create Release Branch and PR
 
 on:
-  workflow_dispatch
+  workflow_dispatch:
+    inputs:
+      release_branch:
+        description: "Name of the release branch (e.g. release/1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: write           # allow pushing new branch
+  pull-requests: write      # allow creating PRs (requires repo setting enabled:contentReference[oaicite:0]{index=0})
 
 jobs:
-  CreateReleasePR:
+  create-release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: main        # ensure we're on latest main
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Extract version from package.json
-        id: version
+      - name: Create release branch
         run: |
-          VERSION=$(jq -r .version package.json)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # Fetch remote to ensure up-to-date and check if branch exists
+          git fetch origin main
+          git checkout -B "${{ inputs.release_branch }}" origin/main
 
-      - name: Configure Git
-        run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-
-      - name: Fetch all branches
-        run: git fetch --all
-
-      - name: Create release branch from first commit if needed
-        run: |
-          VERSION=${{ steps.version.outputs.version }}
-
-          if git ls-remote --exit-code --heads origin release/${VERSION}; then
-            echo "Release branch already exists, skipping."
-            exit 0
+          # If branch already exists on remote, abort to avoid conflicts
+          if git ls-remote --exit-code --heads origin "${{ inputs.release_branch }}"; then
+            echo "Release branch already exists on remote. Exiting."
+            exit 1
           fi
 
-          # Get the first commit in the repository
-          FIRST_COMMIT=$(git rev-list --max-parents=0 HEAD)
+          # Create an empty commit to ensure branch has a unique history
+          git commit --allow-empty -m "chore: start ${{
+            inputs.release_branch }} [skip ci]"
+          # Push new branch to origin with [skip ci] to avoid triggering workflows:contentReference[oaicite:1]{index=1}
+          git push origin "${{ inputs.release_branch }}"
+        env:
+          GITHUB_AUTHOR: ${{ github.actor }}
 
-          echo "Creating release branch from first commit: $FIRST_COMMIT"
-
-          git checkout -b release/${VERSION} $FIRST_COMMIT
-          git push origin release/${VERSION}
-      - name: Create PR branch from main
+      - name: Create pull request from main into release branch
         run: |
-          git checkout origin/main
-          git checkout -b main-to-release-${{ steps.version.outputs.version }}
-          git push origin main-to-release-${{ steps.version.outputs.version }}
-
-      - name: Create Pull Request using GitHub CLI
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const version = "${{ steps.version.outputs.version }}";
-            const prTitle = `Release ${version}`;
-            const prBody = `Merge \`main\` into \`release/${version}\` for release.`;
-            const { data: existingPRs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              head: `${context.repo.owner}:main-to-release-${version}`,
-              base: `release/${version}`,
-              state: "open"
-            });
-            if (existingPRs.length === 0) {
-              await github.rest.pulls.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: prTitle,
-                head: `main-to-release-${version}`,
-                base: `release/${version}`,
-                body: prBody
-              });
-            } else {
-              core.info("PR already exists.");
-            }
+          gh pr create \
+            --base "${{ inputs.release_branch }}" \
+            --head "main" \
+            --title "Merge main into ${{
+              inputs.release_branch }}" \
+            --body "This pull request was automatically created to merge \`main\` into **${{
+              inputs.release_branch }}** for release preparation."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
