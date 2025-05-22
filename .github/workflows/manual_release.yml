@@ -1,10 +1,8 @@
 name: Manual Release Trigger
-run-name: Manual Release Triggered by ${{ github.actor }}
+run-name: Manual Release triggered by ${{ github.actor }}
 
 on:
-  workflow_dispatch:
-    branches:
-      - main
+  workflow_dispatch
 
 jobs:
   CreateReleasePR:
@@ -12,9 +10,12 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -27,20 +28,16 @@ jobs:
           VERSION=$(jq -r .version package.json)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Configure Git with GitHub actor identity
+      - name: Configure Git
         run: |
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: Create release branch
-        run: |
-          git checkout -b release/${{ steps.version.outputs.version }}
-          git push origin release/${{ steps.version.outputs.version }}
-
       - name: Create Pull Request to main from release branch
         uses: peter-evans/create-pull-request@v5
         with:
-          source: release/${{ steps.version.outputs.version }}
-          target: main
+          branch: release/${{ steps.version.outputs.version }}
+          base: main
           title: "Release ${{ steps.version.outputs.version }}"
           body: "Automated PR for release ${{ steps.version.outputs.version }}"
+          commit-message: "chore(release): prepare release ${{ steps.version.outputs.version }}"
