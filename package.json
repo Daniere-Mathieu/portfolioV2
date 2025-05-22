@@ -2,7 +2,7 @@
   "name": "portfolio",
   "private": true,
   "type": "module",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "scripts": {
     "build:ssr": "nuxt build",
     "dev": "concurrently \"nuxt dev\" \"lt --port 3000\"",
