@@ -33,11 +33,11 @@ jobs:
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: Create Pull Request to main from release branch
-        uses: peter-evans/create-pull-request@v5
+      - name: Create Pull Request from main to release branch
+        uses: peter-evans/create-pull-request@v7
         with:
-          branch: release/${{ steps.version.outputs.version }}
-          base: main
+          source: main
+          destination: release/${{ steps.version.outputs.version }}
           title: "Release ${{ steps.version.outputs.version }}"
-          body: "Automated PR for release ${{ steps.version.outputs.version }}"
-          commit-message: "chore(release): prepare release ${{ steps.version.outputs.version }}"
+          body: "Automated PR from main to release/${{ steps.version.outputs.version }}"
+          commit-message: "chore(release): merge main into release/${{ steps.version.outputs.version }}"
