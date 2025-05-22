@@ -28,28 +28,27 @@ jobs:
           VERSION=$(jq -r .version package.json)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Configure Git user
+      - name: Configure Git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create release branch with dummy commit
+      - name: Add dummy commit to main
+        run: |
+          git checkout main
+          echo "temp release trigger" > .release-pr-trigger
+          git add .release-pr-trigger
+          git commit -m "chore: temporary release trigger [skip ci]"
+          git push origin main
+
+      - name: Create release branch from updated main
         run: |
           VERSION=${{ steps.get_version.outputs.version }}
           RELEASE_BRANCH="release/$VERSION"
-
-          # Create new branch from latest main
-          git checkout -b "$RELEASE_BRANCH" origin/main
-
-          # Add dummy file to ensure a diff and avoid PR rejection
-          echo "DO NOT MERGE — Dummy file for release $VERSION" > .release-dummy
-          git add .release-dummy
-          git commit -m "chore: dummy commit to allow PR [skip ci]"
-
-          # Push release branch
+          git checkout -b "$RELEASE_BRANCH"
           git push origin "$RELEASE_BRANCH"
 
-      - name: Open pull request from main into release branch
+      - name: Open pull request (main → release/x.x.x)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
