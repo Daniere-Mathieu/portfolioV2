@@ -36,13 +36,24 @@ jobs:
       - name: Fetch all branches
         run: git fetch --all
 
-      - name: Create release branch if needed
+      - name: Create empty release branch if needed
         run: |
-          if ! git show-ref --quiet refs/remotes/origin/release/${{ steps.version.outputs.version }}; then
-            git checkout -b release/${{ steps.version.outputs.version }} origin/main
-            git push origin release/${{ steps.version.outputs.version }}
+          VERSION=${{ steps.version.outputs.version }}
+
+          if git ls-remote --exit-code --heads origin release/${VERSION}; then
+            echo "Release branch already exists, skipping."
+            exit 0
           fi
 
+          echo "Creating empty release branch: release/${VERSION}"
+
+          git checkout --orphan release/${VERSION}
+          git rm -rf . || true
+          echo "# Release ${VERSION}" > README.md
+          git add README.md
+          git commit -m "chore: initialize empty release branch for ${VERSION}"
+          git push origin release/${VERSION}
+          
       - name: Create PR branch from main
         run: |
           git checkout origin/main
